@@ -1,0 +1,36 @@
+name: Daily Social Snapshot
+
+on:
+  schedule:
+    - cron: "17 8 * * *" # 08:17 UTC daily
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      # Until a real config.yaml is committed, fall back to the template so the
+      # run starts and exits cleanly with a "not configured" message.
+      - name: Ensure config.yaml exists
+        run: "[ -f config.yaml ] || cp config.example.yaml config.yaml"
+
+      - name: Run pipeline
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          X_CLIENT_ID: ${{ secrets.X_CLIENT_ID }}
+          X_CLIENT_SECRET: ${{ secrets.X_CLIENT_SECRET }}
+          # One pair of secrets per account, matching the *_env names in config.yaml.
+          X_NEWSYSTEMS_ACCESS_TOKEN: ${{ secrets.X_NEWSYSTEMS_ACCESS_TOKEN }}
+          X_NEWSYSTEMS_REFRESH_TOKEN: ${{ secrets.X_NEWSYSTEMS_REFRESH_TOKEN }}
+          X_OTHERSTUFFPOD_ACCESS_TOKEN: ${{ secrets.X_OTHERSTUFFPOD_ACCESS_TOKEN }}
+          X_OTHERSTUFFPOD_REFRESH_TOKEN: ${{ secrets.X_OTHERSTUFFPOD_REFRESH_TOKEN }}
+        run: python -m src.main

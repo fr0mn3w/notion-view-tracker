@@ -1,0 +1,21 @@
+# Social Metrics to Notion - live config (v1: X / Twitter only).
+# No secrets here. Tokens come from env / GitHub Actions Secrets, named below.
+#
+# Hero metric: impressions / views. On X this is impression_count (X's "Views"),
+# written to the "Impressions or Reach" column. Foreground that column in the dashboard.
+
+notion:
+  database_id: "3736e03f5eaa80d3b965fce6ccf8f225"
+
+x:
+  window_days: 7
+  provisional_days: 2
+  max_posts: 100
+
+  accounts:
+    - handle: "newsystems_"
+      access_token_env: "X_NEWSYSTEMS_ACCESS_TOKEN"
+      refresh_token_env: "X_NEWSYSTEMS_REFRESH_TOKEN"
+    - handle: "otherstuffpod"
+      access_token_env: "X_OTHERSTUFFPOD_ACCESS_TOKEN"
+      refresh_token_env: "X_OTHERSTUFFPOD_REFRESH_TOKEN"

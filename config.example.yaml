@@ -1,0 +1,31 @@
+# Social Metrics to Notion - configuration template (v1: X / Twitter only).
+#
+# Copy this file to config.yaml and fill in the real values, then commit config.yaml.
+# This file contains NO secrets. Tokens (Notion token, X client secret, per-account
+# OAuth tokens) are read from environment variables / GitHub Actions Secrets, never
+# from this file. config.yaml only names which env var holds each token.
+
+notion:
+  # The Daily Snapshots database ID (the 32-char id from the database URL).
+  # Not a secret on its own (useless without NOTION_TOKEN), but identifying.
+  # Can also be overridden by the NOTION_DATABASE_ID env var.
+  database_id: "REPLACE_WITH_NOTION_DATABASE_ID"
+
+x:
+  # How many days of recent posts to include in each daily rollup sum.
+  # X exposes non_public_metrics (impressions) only for posts < ~30 days old.
+  window_days: 7
+  # Rows newer than this many days are flagged Provisional (counts still maturing).
+  provisional_days: 2
+  # Hard cap on posts pulled per account per run. Cost guard (X is pay-per-use).
+  max_posts: 100
+
+  accounts:
+    - handle: "exampleaccount"
+      # Names of the env vars that hold this account's OAuth2 user tokens.
+      # Set the actual token values as GitHub Actions Secrets with these names.
+      access_token_env: "X_EXAMPLEACCOUNT_ACCESS_TOKEN"
+      refresh_token_env: "X_EXAMPLEACCOUNT_REFRESH_TOKEN"
+    # - handle: "secondaccount"
+    #   access_token_env: "X_SECONDACCOUNT_ACCESS_TOKEN"
+    #   refresh_token_env: "X_SECONDACCOUNT_REFRESH_TOKEN"

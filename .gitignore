@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+.DS_Store
+
+# Local secrets / scratch. config.yaml itself holds NO secrets (see config.example.yaml)
+# and is meant to be committed so CI can read it. Tokens live in env / GitHub Secrets.
+secrets.env
