@@ -1,29 +1,34 @@
 #!/usr/bin/env python3
 """Mint an X (Twitter) OAuth2 user-context access + refresh token, one account at a time.
 
-Run once per team account. Sign into the TARGET account in your browser first, then run
-this. It opens X's consent screen, captures the redirect on localhost, exchanges the code,
-and prints the access + refresh tokens to paste into GitHub Secrets.
+Manual-paste flow (no local server, so no localhost / port / HTTPS headaches):
+  1. Script prints an authorize URL.
+  2. You open it (signed into the TARGET account) and click Authorize.
+  3. The browser lands on a http://localhost:8080/callback?... page. It will probably say
+     "This site can't be reached" - that is EXPECTED and totally fine. Nothing is listening
+     there; we just need the URL.
+  4. Copy the FULL URL from the browser's address bar and paste it back into the terminal.
+  5. Script exchanges the code and prints the access + refresh tokens.
+
+IMPORTANT: X authorization codes expire fast (~30 seconds). Paste the URL promptly after
+authorizing. If it says the code is invalid/expired, just run the script again.
 
 Prereqs:
-- An X app with OAuth 2.0 enabled, type "Web App, Automated App or Bot" (confidential
-  client), Read permission, and a redirect URI of exactly:
-      http://localhost:8080/callback
+- X app with OAuth 2.0 on, type "Web App, Automated App or Bot" (confidential client),
+  Read permission, redirect URI exactly: http://localhost:8080/callback
 - Environment: X_CLIENT_ID, X_CLIENT_SECRET
 
 Usage:
     export X_CLIENT_ID=...  X_CLIENT_SECRET=...
-    python scripts/mint_x_token.py
+    python3 scripts/mint_x_token.py
 """
 import base64
 import hashlib
-import http.server
 import json
 import os
 import secrets
 import sys
-import threading
-import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -33,27 +38,6 @@ REDIRECT_URI = "http://localhost:8080/callback"
 SCOPES = "tweet.read users.read offline.access"
 AUTHORIZE_URL = "https://x.com/i/oauth2/authorize"
 TOKEN_URL = "https://api.twitter.com/2/oauth2/token"
-
-_result = {}
-
-
-class Handler(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
-        parsed = urllib.parse.urlparse(self.path)
-        if parsed.path != "/callback":
-            self.send_response(404)
-            self.end_headers()
-            return
-        params = urllib.parse.parse_qs(parsed.query)
-        _result["code"] = params.get("code", [None])[0]
-        _result["state"] = params.get("state", [None])[0]
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html")
-        self.end_headers()
-        self.wfile.write(b"<h2>Got it. Close this tab and return to the terminal.</h2>")
-
-    def log_message(self, *args):  # silence the default request logging
-        pass
 
 
 def main():
@@ -80,29 +64,31 @@ def main():
         }
     )
 
-    server = http.server.HTTPServer(("localhost", 8080), Handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-
-    print("\nMake sure you're logged into the TARGET account in your browser, then open:\n")
+    print("\n1) Make sure the TARGET account is the one logged into x.com.")
+    print("   Then open this URL in your browser and click Authorize:\n")
     print(auth_url + "\n")
-    try:
-        import webbrowser
+    print("2) The browser will jump to a 'localhost' page that probably says")
+    print('   "This site can\'t be reached" - that is EXPECTED. Nothing runs there.')
+    print("3) Copy the FULL address from the browser's address bar")
+    print("   (it starts with http://localhost:8080/callback?code=...) and paste it below.")
+    print("   Do this promptly - the code expires in about 30 seconds.\n")
 
-        webbrowser.open(auth_url)
-    except Exception:
-        pass
+    pasted = input("Paste the full localhost URL (or just the code) here: ").strip()
 
-    for _ in range(300):  # wait up to 5 minutes for the redirect
-        if _result.get("code"):
-            break
-        time.sleep(1)
-    server.shutdown()
+    code = None
+    returned_state = None
+    if "code=" in pasted:
+        query = urllib.parse.urlparse(pasted).query or pasted.split("?", 1)[-1]
+        params = urllib.parse.parse_qs(query)
+        code = (params.get("code") or [None])[0]
+        returned_state = (params.get("state") or [None])[0]
+    else:
+        code = pasted or None
 
-    code = _result.get("code")
     if not code:
-        sys.exit("No authorization code captured (timed out or denied).")
-    if _result.get("state") != state:
-        sys.exit("State mismatch; aborting.")
+        sys.exit("Couldn't find an authorization code in what you pasted.")
+    if returned_state and returned_state != state:
+        sys.exit("State mismatch (paste came from a different run). Start over.")
 
     data = urllib.parse.urlencode(
         {
@@ -126,7 +112,11 @@ def main():
         with urllib.request.urlopen(req) as resp:
             tokens = json.loads(resp.read())
     except urllib.error.HTTPError as e:
-        sys.exit(f"Token exchange failed: {e.code} {e.read().decode()}")
+        body = e.read().decode()
+        if "invalid_request" in body or "expired" in body or e.code == 400:
+            sys.exit(f"Token exchange failed ({e.code}). The code likely expired - "
+                     f"just run the script again and paste faster.\n{body}")
+        sys.exit(f"Token exchange failed: {e.code} {body}")
 
     print("\n=== TOKENS (store as GitHub Secrets, then discard this output) ===")
     print("\nACCESS_TOKEN:\n" + tokens.get("access_token", "(none)"))
