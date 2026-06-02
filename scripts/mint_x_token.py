@@ -31,7 +31,7 @@ CLIENT_ID = os.environ.get("X_CLIENT_ID")
 CLIENT_SECRET = os.environ.get("X_CLIENT_SECRET")
 REDIRECT_URI = "http://localhost:8080/callback"
 SCOPES = "tweet.read users.read offline.access"
-AUTHORIZE_URL = "https://twitter.com/i/oauth2/authorize"
+AUTHORIZE_URL = "https://x.com/i/oauth2/authorize"
 TOKEN_URL = "https://api.twitter.com/2/oauth2/token"
 
 _result = {}
