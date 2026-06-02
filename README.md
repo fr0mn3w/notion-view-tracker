@@ -94,6 +94,10 @@ requirements.txt
   user-context **access token** and **refresh token**. `offline.access` is what makes the
   refresh token possible; user context is what unlocks `non_public_metrics` (impressions)
   on the account's own posts.
+  - Helper: set the app's redirect URI to `http://localhost:8080/callback`, then
+    `export X_CLIENT_ID=... X_CLIENT_SECRET=...` and run `python scripts/mint_x_token.py`
+    once per account (signed into that account in your browser). It prints the access and
+    refresh tokens to paste into GitHub Secrets.
 
 **2. Notion database**
 - Create an internal Notion integration and copy its token.
