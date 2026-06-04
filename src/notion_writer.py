@@ -20,6 +20,7 @@ PROP = {
     "platform": "Platform",
     "account": "Account",
     "followers": "Followers or Subscribers",
+    "followers_gained": "Followers Gained",
     "views": "Views",
     "impressions": "Impressions or Reach",
     "engagements": "Engagements",
@@ -71,7 +72,35 @@ class NotionWriter:
         }
         if snapshot.get("views") is not None:
             props[PROP["views"]] = {"number": snapshot["views"]}
+        if snapshot.get("followers_gained") is not None:
+            props[PROP["followers_gained"]] = {"number": snapshot["followers_gained"]}
         return props
+
+    def previous_followers(self, platform, account, before_date):
+        """Follower count from the most recent snapshot strictly before before_date.
+
+        Used to compute the daily follower delta. Returns None if there's no prior row.
+        """
+        resp = self.session.post(
+            f"{NOTION_API}/databases/{self.database_id}/query",
+            json={
+                "filter": {
+                    "and": [
+                        {"property": PROP["platform"], "select": {"equals": platform}},
+                        {"property": PROP["account"], "select": {"equals": account}},
+                        {"property": PROP["date"], "date": {"before": before_date}},
+                    ]
+                },
+                "sorts": [{"property": PROP["date"], "direction": "descending"}],
+                "page_size": 1,
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        results = resp.json().get("results", [])
+        if not results:
+            return None
+        return results[0]["properties"].get(PROP["followers"], {}).get("number")
 
     def upsert(self, snapshot):
         key = self._key(snapshot)

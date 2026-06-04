@@ -107,6 +107,13 @@ def run():
                 now,
                 on_refresh=persist_rotated,
             )
+            # Daily follower delta: today's total minus the most recent prior snapshot.
+            try:
+                prev = writer.previous_followers("X", snapshot["account"], snapshot["date"])
+                if prev is not None:
+                    snapshot["followers_gained"] = snapshot["followers"] - prev
+            except Exception as pe:
+                log.warning("Couldn't compute follower delta for @%s: %s", handle, pe)
             writer.upsert(snapshot)
             rows_written += 1
         except Exception as e:  # fail soft: log and move on, never blank rows

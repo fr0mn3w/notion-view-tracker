@@ -170,6 +170,7 @@ def fetch_account_snapshot(client, account, tokens, window_days, max_posts, now,
         "account": me.get("username") or account.get("handle"),
         "date": today,
         "followers": followers,
+        "followers_gained": None,  # daily delta, filled by main from the prior snapshot
         "views": None,  # X has no separate "views"; impressions carries the reach metric
         "impressions": totals["impressions"],
         "engagements": engagements,
