@@ -60,19 +60,25 @@ class NotionWriter:
         )
         self._schema_cache = None
 
-    def _existing_props(self):
-        """Set of property names that actually exist in the database (cached per run).
-
-        Lets the writer adapt to columns the user renamed or removed instead of
-        crashing the whole row write on one missing property.
-        """
+    def _schema(self):
+        """Full database properties dict (cached per run)."""
         if self._schema_cache is None:
             resp = self.session.get(
                 f"{NOTION_API}/databases/{self.database_id}", timeout=30
             )
             resp.raise_for_status()
-            self._schema_cache = set(resp.json().get("properties", {}).keys())
+            self._schema_cache = resp.json().get("properties", {})
         return self._schema_cache
+
+    def _existing_props(self):
+        """Set of property names that exist in the DB. Lets the writer adapt to columns
+        the user renamed or removed instead of crashing on one missing property."""
+        return set(self._schema().keys())
+
+    def _select_options(self, prop_name):
+        """Existing option names for a Select property (empty set if none/not a select)."""
+        prop = self._schema().get(prop_name, {})
+        return {o.get("name") for o in prop.get("select", {}).get("options", [])}
 
     def _resolve(self, field, used=()):
         """First acceptable column name for a logical field that exists in the DB
@@ -185,17 +191,22 @@ class NotionWriter:
     def age_out_provisional(self, platform, cutoff_date):
         """Clear the Provisional flag on settled rows (date before cutoff_date).
 
-        Costs no X calls. Keeps the still-maturing window flagged without touching
+        Costs no fetch calls. Keeps the still-maturing window flagged without touching
         the freshly written rows.
         """
+        platform_col = self._resolve("platform") or PROP["platform"]
+        # Filtering a Select by an option that doesn't exist yet 400s, so skip when this
+        # platform has never written a row (nothing to age out anyway).
+        if platform not in self._select_options(platform_col):
+            return
         resp = self.session.post(
             f"{NOTION_API}/databases/{self.database_id}/query",
             json={
                 "filter": {
                     "and": [
-                        {"property": PROP["platform"], "select": {"equals": platform}},
-                        {"property": PROP["provisional"], "checkbox": {"equals": True}},
-                        {"property": PROP["date"], "date": {"before": cutoff_date}},
+                        {"property": platform_col, "select": {"equals": platform}},
+                        {"property": self._resolve("provisional") or PROP["provisional"], "checkbox": {"equals": True}},
+                        {"property": self._resolve("date") or PROP["date"], "date": {"before": cutoff_date}},
                     ]
                 }
             },
