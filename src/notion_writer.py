@@ -40,6 +40,21 @@ class NotionWriter:
                 "Content-Type": "application/json",
             }
         )
+        self._schema_cache = None
+
+    def _existing_props(self):
+        """Set of property names that actually exist in the database (cached per run).
+
+        Lets the writer adapt to columns the user renamed or removed instead of
+        crashing the whole row write on one missing property.
+        """
+        if self._schema_cache is None:
+            resp = self.session.get(
+                f"{NOTION_API}/databases/{self.database_id}", timeout=30
+            )
+            resp.raise_for_status()
+            self._schema_cache = set(resp.json().get("properties", {}).keys())
+        return self._schema_cache
 
     @staticmethod
     def _key(snapshot):
@@ -74,7 +89,24 @@ class NotionWriter:
             props[PROP["views"]] = {"number": snapshot["views"]}
         if snapshot.get("followers_gained") is not None:
             props[PROP["followers_gained"]] = {"number": snapshot["followers_gained"]}
-        return props
+
+        # Adapt to the actual DB schema: the reach metric column is sometimes named
+        # "Views" instead of "Impressions or Reach". Write to whichever exists.
+        existing = self._existing_props()
+        if PROP["impressions"] not in existing and "Views" in existing:
+            props.setdefault("Views", props.pop(PROP["impressions"]))
+
+        # Drop any property the DB doesn't have so one renamed/removed column never
+        # fails the whole row write. Title ("Name") is always present.
+        present, missing = {}, []
+        for name, value in props.items():
+            if name in existing:
+                present[name] = value
+            else:
+                missing.append(name)
+        if missing:
+            log.warning("Skipping properties not found in the Notion DB: %s", ", ".join(missing))
+        return present
 
     def previous_followers(self, platform, account, before_date):
         """Follower count from the most recent snapshot strictly before before_date.
