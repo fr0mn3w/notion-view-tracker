@@ -14,6 +14,7 @@ log = logging.getLogger(__name__)
 NOTION_API = "https://api.notion.com/v1"
 NOTION_VERSION = "2022-06-28"
 
+# Canonical property name per logical field (used for query filters).
 PROP = {
     "name": "Name",  # title property, holds the unique upsert key
     "date": "Date",
@@ -26,6 +27,23 @@ PROP = {
     "engagements": "Engagements",
     "posts": "Posts Published",
     "provisional": "Provisional",
+}
+
+# Acceptable column names per field, in priority order. The writer uses whichever
+# one exists in the database, so common renames (e.g. "Impressions or Reach" -> "Views",
+# "Followers or Subscribers" -> "Followers") keep working without code changes.
+CANDIDATES = {
+    "name": ["Name"],
+    "date": ["Date"],
+    "platform": ["Platform"],
+    "account": ["Account"],
+    "followers": ["Followers or Subscribers", "Followers", "Subscribers"],
+    "followers_gained": ["Followers Gained", "Followers Δ", "Net Followers"],
+    "views": ["Views"],
+    "impressions": ["Impressions or Reach", "Impressions", "Reach", "Views"],
+    "engagements": ["Engagements"],
+    "posts": ["Posts Published", "Posts"],
+    "provisional": ["Provisional"],
 }
 
 
@@ -56,6 +74,14 @@ class NotionWriter:
             self._schema_cache = set(resp.json().get("properties", {}).keys())
         return self._schema_cache
 
+    def _resolve(self, field, used=()):
+        """First acceptable column name for a logical field that exists in the DB
+        and hasn't already been claimed. Returns None if none match."""
+        for name in CANDIDATES.get(field, [PROP.get(field)]):
+            if name and name in self._existing_props() and name not in used:
+                return name
+        return None
+
     @staticmethod
     def _key(snapshot):
         return f'{snapshot["date"]}|{snapshot["platform"]}|{snapshot["account"]}'
@@ -74,56 +100,56 @@ class NotionWriter:
         return results[0]["id"] if results else None
 
     def _properties(self, snapshot):
-        props = {
-            PROP["name"]: {"title": [{"text": {"content": self._key(snapshot)}}]},
-            PROP["date"]: {"date": {"start": snapshot["date"]}},
-            PROP["platform"]: {"select": {"name": snapshot["platform"]}},
-            PROP["account"]: {"select": {"name": snapshot["account"]}},
-            PROP["followers"]: {"number": snapshot["followers"]},
-            PROP["impressions"]: {"number": snapshot["impressions"]},
-            PROP["engagements"]: {"number": snapshot["engagements"]},
-            PROP["posts"]: {"number": snapshot["posts_published"]},
-            PROP["provisional"]: {"checkbox": bool(snapshot["provisional"])},
+        # logical field -> Notion value object (only fields with a value to write)
+        values = {
+            "name": {"title": [{"text": {"content": self._key(snapshot)}}]},
+            "date": {"date": {"start": snapshot["date"]}},
+            "platform": {"select": {"name": snapshot["platform"]}},
+            "account": {"select": {"name": snapshot["account"]}},
+            "followers": {"number": snapshot["followers"]},
+            "impressions": {"number": snapshot["impressions"]},
+            "engagements": {"number": snapshot["engagements"]},
+            "posts": {"number": snapshot["posts_published"]},
+            "provisional": {"checkbox": bool(snapshot["provisional"])},
         }
         if snapshot.get("views") is not None:
-            props[PROP["views"]] = {"number": snapshot["views"]}
+            values["views"] = {"number": snapshot["views"]}
         if snapshot.get("followers_gained") is not None:
-            props[PROP["followers_gained"]] = {"number": snapshot["followers_gained"]}
+            values["followers_gained"] = {"number": snapshot["followers_gained"]}
 
-        # Adapt to the actual DB schema: the reach metric column is sometimes named
-        # "Views" instead of "Impressions or Reach". Write to whichever exists.
-        existing = self._existing_props()
-        if PROP["impressions"] not in existing and "Views" in existing:
-            props.setdefault("Views", props.pop(PROP["impressions"]))
-
-        # Drop any property the DB doesn't have so one renamed/removed column never
-        # fails the whole row write. Title ("Name") is always present.
-        present, missing = {}, []
-        for name, value in props.items():
-            if name in existing:
-                present[name] = value
+        # Map each field to whatever column name actually exists in the DB. A field
+        # with no matching column is skipped (logged) rather than failing the row.
+        props, used, missing = {}, set(), []
+        for field, value in values.items():
+            name = self._resolve(field, used)
+            if name:
+                props[name] = value
+                used.add(name)
             else:
-                missing.append(name)
+                missing.append(field)
         if missing:
-            log.warning("Skipping properties not found in the Notion DB: %s", ", ".join(missing))
-        return present
+            log.warning("No Notion column found for: %s (skipped)", ", ".join(missing))
+        return props
 
     def previous_followers(self, platform, account, before_date):
         """Follower count from the most recent snapshot strictly before before_date.
 
         Used to compute the daily follower delta. Returns None if there's no prior row.
         """
+        followers_col = self._resolve("followers")
+        if not followers_col:
+            return None
         resp = self.session.post(
             f"{NOTION_API}/databases/{self.database_id}/query",
             json={
                 "filter": {
                     "and": [
-                        {"property": PROP["platform"], "select": {"equals": platform}},
-                        {"property": PROP["account"], "select": {"equals": account}},
-                        {"property": PROP["date"], "date": {"before": before_date}},
+                        {"property": self._resolve("platform") or PROP["platform"], "select": {"equals": platform}},
+                        {"property": self._resolve("account") or PROP["account"], "select": {"equals": account}},
+                        {"property": self._resolve("date") or PROP["date"], "date": {"before": before_date}},
                     ]
                 },
-                "sorts": [{"property": PROP["date"], "direction": "descending"}],
+                "sorts": [{"property": self._resolve("date") or PROP["date"], "direction": "descending"}],
                 "page_size": 1,
             },
             timeout=30,
@@ -132,7 +158,7 @@ class NotionWriter:
         results = resp.json().get("results", [])
         if not results:
             return None
-        return results[0]["properties"].get(PROP["followers"], {}).get("number")
+        return results[0]["properties"].get(followers_col, {}).get("number")
 
     def upsert(self, snapshot):
         key = self._key(snapshot)
