@@ -120,11 +120,15 @@ def _iso_z(dt):
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def fetch_account_snapshot(client, account, tokens, window_days, max_posts, now):
+def fetch_account_snapshot(client, account, tokens, window_days, max_posts, now, on_refresh=None):
     """Fetch one account's daily snapshot.
 
     Returns (snapshot_dict, rotated_refresh_token_or_None). Raises on hard failure
     so the caller can fail soft (skip this account, leave its rows intact).
+
+    on_refresh(access_token, refresh_token): called the instant a refresh rotates the
+    tokens, BEFORE the retried request, so the new refresh token can be persisted
+    immediately (X invalidates the old one as soon as it's used).
     """
     refresh_token = tokens.get("refresh_token")
     state = {"access_token": tokens["access_token"], "new_refresh": None}
@@ -139,6 +143,8 @@ def fetch_account_snapshot(client, account, tokens, window_days, max_posts, now)
                 new_access, new_refresh = client.refresh_access_token(refresh_token)
                 state["access_token"] = new_access
                 state["new_refresh"] = new_refresh
+                if on_refresh:
+                    on_refresh(new_access, new_refresh)
                 return fn(new_access, *args)
             raise
 

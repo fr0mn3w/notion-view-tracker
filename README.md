@@ -152,13 +152,19 @@ Hero metric is **impressions / views** (on X, `impression_count`, which X surfac
 line view of that column over Date, grouped by Account. Followers and Engagements get
 secondary line charts.
 
-### Known v1 limitation: refresh-token rotation
+### Refresh-token rotation (handled)
 
-X rotates the OAuth2 refresh token on every use. A stateless Actions run cannot persist
-the new token back into Secrets, so the stored refresh token goes stale once used. v1
-keeps the access token alive within its lifetime and logs a loud warning when rotation
-happens. Durable options for later: store the rotating token in a secret manager and
-write it back each run, or keep a long-lived session refreshed by a separate job. This is
-the PRD's flagged number-one operational risk; revisit it before relying on unattended
-runs over long periods.
+X rotates the OAuth2 refresh token on every use and invalidates the old one. The pipeline
+handles this by writing the rotated tokens straight back into the repo's Actions secrets
+the moment a refresh happens (`src/github_secrets.py`, libsodium sealed-box encrypted), so
+the next run always has a live token. This needs a PAT:
+
+- Create a **fine-grained personal access token** scoped to this repo with
+  **Repository permissions → Secrets: Read and write** (and the default Metadata: read).
+- Add it as the `GH_PAT` repository secret.
+
+Without `GH_PAT`, a refresh still works for the current run but the new token isn't saved,
+and the next run fails auth (you'd have to re-mint). If persistence ever fails, the run
+logs `CRITICAL: failed to persist rotated token` — re-mint that account with
+`scripts/mint_x_token.py` and re-set its secrets.
 

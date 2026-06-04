@@ -12,6 +12,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 from .config import ConfigError, load_config
+from .github_secrets import update_repo_secret
 from .notion_writer import NotionWriter
 from .x_fetcher import XClient, fetch_account_snapshot
 
@@ -58,11 +59,17 @@ def run():
     client_secret = _env("X_CLIENT_SECRET")
     client = XClient(client_id, client_secret) if client_id and client_secret else None
 
+    # For persisting rotated tokens back into GitHub Secrets (see github_secrets.py).
+    gh_pat = _env("GH_PAT")
+    gh_repo = _env("GITHUB_REPOSITORY")  # auto-set by Actions, e.g. "fr0mn3w/notion-view-tracker"
+
     rows_written = 0
     for account in accounts:
         handle = account.get("handle", "?")
         access_token = _env(account.get("access_token_env"))
         refresh_token = _env(account.get("refresh_token_env"))
+        access_env = account.get("access_token_env")
+        refresh_env = account.get("refresh_token_env")
 
         if not client or not access_token:
             log.warning(
@@ -71,24 +78,37 @@ def run():
             )
             continue
 
+        def persist_rotated(new_access, new_refresh, _aenv=access_env, _renv=refresh_env, _h=handle):
+            if not (gh_pat and gh_repo):
+                log.warning(
+                    "Token rotated for @%s but GH_PAT/GITHUB_REPOSITORY not set; new refresh "
+                    "token NOT persisted. Next run will fail auth. Set GH_PAT to auto-persist.",
+                    _h,
+                )
+                return
+            try:
+                update_repo_secret(gh_repo, _renv, new_refresh, gh_pat)
+                update_repo_secret(gh_repo, _aenv, new_access, gh_pat)
+                log.info("Persisted rotated tokens for @%s", _h)
+            except Exception as pe:
+                log.error(
+                    "CRITICAL: failed to persist rotated token for @%s: %s. Next run may "
+                    "fail auth; re-mint that account's tokens if so.",
+                    _h, pe,
+                )
+
         try:
-            snapshot, rotated_refresh = fetch_account_snapshot(
+            snapshot, _rotated = fetch_account_snapshot(
                 client,
                 account,
                 {"access_token": access_token, "refresh_token": refresh_token},
                 window_days,
                 max_posts,
                 now,
+                on_refresh=persist_rotated,
             )
             writer.upsert(snapshot)
             rows_written += 1
-            if rotated_refresh and rotated_refresh != refresh_token:
-                log.warning(
-                    "X refresh token rotated for @%s. Update the %s secret with the "
-                    "new value or the next run will fail (see README OAuth notes).",
-                    handle,
-                    account.get("refresh_token_env"),
-                )
         except Exception as e:  # fail soft: log and move on, never blank rows
             log.error(
                 "Fetch/write failed for X account @%s: %s. Existing rows left intact.",

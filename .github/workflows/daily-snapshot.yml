@@ -24,6 +24,9 @@ jobs:
 
       - name: Run pipeline
         env:
+          # PAT with Secrets read+write on this repo, so the run can persist X's
+          # rotated refresh tokens back into the secret store (see README).
+          GH_PAT: ${{ secrets.GH_PAT }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
           X_CLIENT_ID: ${{ secrets.X_CLIENT_ID }}
