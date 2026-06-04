@@ -29,3 +29,15 @@ x:
     # - handle: "secondaccount"
     #   access_token_env: "X_SECONDACCOUNT_ACCESS_TOKEN"
     #   refresh_token_env: "X_SECONDACCOUNT_REFRESH_TOKEN"
+
+# v2: YouTube. Public counts via Data API key (env YT_API_KEY) + per-day analytics via
+# the Analytics API with owner OAuth (env YT_CLIENT_ID, YT_CLIENT_SECRET + per-channel
+# tokens). Writes one row per day for the trailing window and overwrites them each run.
+youtube:
+  trailing_days: 3       # re-fetch and overwrite the last N days of per-day analytics
+  provisional_days: 3    # rows newer than this stay flagged Provisional (still settling)
+  channels:
+    - handle: "examplechannel"
+      channel_id: "UCxxxxxxxxxxxxxxxxxxxxxx"   # the channel's UC... id
+      access_token_env: "YT_EXAMPLECHANNEL_ACCESS_TOKEN"
+      refresh_token_env: "YT_EXAMPLECHANNEL_REFRESH_TOKEN"

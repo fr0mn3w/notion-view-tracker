@@ -19,3 +19,17 @@ x:
     - handle: "otherstuffpod"
       access_token_env: "X_OTHERSTUFFPOD_ACCESS_TOKEN"
       refresh_token_env: "X_OTHERSTUFFPOD_REFRESH_TOKEN"
+
+# v2: YouTube. Fill channel_id once provided. Tokens live in GitHub Secrets.
+youtube:
+  trailing_days: 3
+  provisional_days: 3
+  channels:
+    - handle: "newsystems"
+      channel_id: "REPLACE_WITH_NEWSYSTEMS_CHANNEL_ID"
+      access_token_env: "YT_NEWSYSTEMS_ACCESS_TOKEN"
+      refresh_token_env: "YT_NEWSYSTEMS_REFRESH_TOKEN"
+    - handle: "otherstuff"
+      channel_id: "REPLACE_WITH_OTHERSTUFF_CHANNEL_ID"
+      access_token_env: "YT_OTHERSTUFF_ACCESS_TOKEN"
+      refresh_token_env: "YT_OTHERSTUFF_REFRESH_TOKEN"

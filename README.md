@@ -168,3 +168,56 @@ and the next run fails auth (you'd have to re-mint). If persistence ever fails, 
 logs `CRITICAL: failed to persist rotated token` — re-mint that account with
 `scripts/mint_x_token.py` and re-set its secrets.
 
+---
+
+## v2 implementation (YouTube)
+
+YouTube runs in the same daily job. It has a real per-day time series, so it writes one
+row **per day** for a trailing window (`youtube.trailing_days`, default 3) and overwrites
+those rows each run, so the still-maturing recent days self-correct. Two data sources:
+
+- **Data API** (API key, public): current subscriber count, lifetime views, video count.
+- **Analytics API** (owner OAuth): per-day views, thumbnail impressions, likes/comments/
+  shares, subscribers gained/lost. From these the pipeline writes, per day: cumulative
+  subscribers, the daily follower delta (`Followers Gained`), views, impressions, and
+  engagements.
+
+### What a human must do
+
+**1. Notion: add an Impressions column.** YouTube views and impressions are different
+numbers (unlike X, where "views" == impressions). The original `Impressions or Reach`
+column was renamed to `Views`, so add a new **Number** column named **`Impressions`** so
+YouTube has somewhere distinct to write impressions. (The writer matches `Impressions`,
+`Impressions or Reach`, or `Reach` for that metric, and `Views` for views.)
+
+**2. Google Cloud project**
+- Create a project at [console.cloud.google.com](https://console.cloud.google.com).
+- Enable **YouTube Data API v3** and **YouTube Analytics API**.
+- **APIs & Services → Credentials → Create credentials → API key** → this is `YT_API_KEY`.
+- **Create credentials → OAuth client ID → Web application.** Add redirect URI exactly
+  `http://localhost:8080/callback`. Copy the Client ID/Secret → `YT_CLIENT_ID` /
+  `YT_CLIENT_SECRET`. Add yourself as a Test user on the OAuth consent screen (scope
+  `yt-analytics.readonly`).
+
+**3. Channel IDs.** Put each channel's `UC...` id into `config.yaml` (from the channel's
+page → ••• → Share → the `channel/UC...` part of the URL, or YouTube Studio → Settings →
+Channel → Advanced).
+
+**4. Mint per-channel tokens** (once per channel, signed into the Google account that owns
+that channel):
+
+```bash
+export YT_CLIENT_ID=...  YT_CLIENT_SECRET=...
+python3 scripts/mint_youtube_token.py
+```
+
+Same manual-paste flow as X. Store the printed pair as the per-channel secrets.
+
+**5. GitHub Secrets**: `YT_API_KEY`, `YT_CLIENT_ID`, `YT_CLIENT_SECRET`, and per channel
+(matching the `*_env` names in `config.yaml`), e.g. `YT_NEWSYSTEMS_ACCESS_TOKEN` /
+`YT_NEWSYSTEMS_REFRESH_TOKEN`.
+
+Until those are set and `channel_id` is filled, the YouTube channels skip cleanly and only
+X runs. Google refresh tokens are long-lived (not rotated per use like X), so they're less
+fragile, but the same auto-persist applies.
+
