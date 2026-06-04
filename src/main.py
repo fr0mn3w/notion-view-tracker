@@ -182,9 +182,13 @@ def run():
                 writer.upsert(snap)
                 rows_written += 1
         except Exception as e:  # fail soft
+            body = ""
+            resp = getattr(e, "response", None)
+            if resp is not None:
+                body = " | response: " + resp.text[:400]
             log.error(
-                "Fetch/write failed for YouTube channel %s: %s. Existing rows left intact.",
-                handle, e,
+                "Fetch/write failed for YouTube channel %s: %s%s. Existing rows left intact.",
+                handle, e, body,
             )
             continue
 
