@@ -113,11 +113,14 @@ class NotionWriter:
             "platform": {"select": {"name": snapshot["platform"]}},
             "account": {"select": {"name": snapshot["account"]}},
             "followers": {"number": snapshot["followers"]},
-            "impressions": {"number": snapshot["impressions"]},
             "engagements": {"number": snapshot["engagements"]},
             "posts": {"number": snapshot["posts_published"]},
             "provisional": {"checkbox": bool(snapshot["provisional"])},
         }
+        # Impressions before views so it claims the dedicated column first; when impressions
+        # is absent (e.g. YouTube), views can take the "Views" column instead.
+        if snapshot.get("impressions") is not None:
+            values["impressions"] = {"number": snapshot["impressions"]}
         if snapshot.get("views") is not None:
             values["views"] = {"number": snapshot["views"]}
         if snapshot.get("followers_gained") is not None:

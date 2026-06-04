@@ -141,7 +141,18 @@ def fetch_channel_snapshots(client, channel, tokens, trailing_days, now, on_refr
     end = now.date()
     start = end - timedelta(days=trailing_days - 1)
     core = call(client.analytics_daily, channel_id, _iso(start), _iso(end), CORE_METRICS)
-    impressions = call(client.analytics_daily, channel_id, _iso(start), _iso(end), IMPRESSION_METRICS)
+    # Thumbnail impressions/CTR are listed as metrics but are NOT a supported channel-report
+    # query in the Analytics API, so this often 400s. Best-effort: skip impressions, keep
+    # the core per-day data (views, subscribers, engagement).
+    try:
+        impressions = call(client.analytics_daily, channel_id, _iso(start), _iso(end), IMPRESSION_METRICS)
+    except requests.HTTPError as e:
+        code = getattr(getattr(e, "response", None), "status_code", "?")
+        log.warning(
+            "Impression metrics unavailable for %s (HTTP %s); writing rows without impressions.",
+            channel.get("handle"), code,
+        )
+        impressions = {}
 
     # Walk days newest -> oldest so we can back out the cumulative subscriber count per day
     # from the current total and each day's net change.
@@ -169,7 +180,7 @@ def fetch_channel_snapshots(client, channel, tokens, trailing_days, now, on_refr
                 "followers": subs_eod,
                 "followers_gained": net,
                 "views": _int(c.get("views")) or 0,
-                "impressions": _int(i.get("videoThumbnailImpressions")) or 0,
+                "impressions": _int(i.get("videoThumbnailImpressions")),  # None if unavailable
                 "engagements": likes + comments + shares,
                 "posts_published": None,  # not tracked per-day in v2
                 "provisional": True,  # whole trailing window is still settling
