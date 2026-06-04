@@ -138,7 +138,9 @@ def fetch_account_snapshot(client, account, tokens, window_days, max_posts, now,
             return fn(state["access_token"], *args)
         except requests.HTTPError as e:
             resp = getattr(e, "response", None)
-            if resp is not None and resp.status_code == 401 and refresh_token:
+            # 401 = expired token; 403 = invalid/rejected token. Either way, try one
+            # refresh-and-retry. If it still fails after refresh, the error propagates.
+            if resp is not None and resp.status_code in (401, 403) and refresh_token:
                 log.info("Access token rejected for @%s, refreshing", account.get("handle"))
                 new_access, new_refresh = client.refresh_access_token(refresh_token)
                 state["access_token"] = new_access
