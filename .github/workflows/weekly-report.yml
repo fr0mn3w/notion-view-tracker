@@ -1,0 +1,27 @@
+name: Weekly Report
+
+on:
+  schedule:
+    - cron: "0 9 * * 1" # Mondays 09:00 UTC, summarizing the prior Sunday-Saturday week
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Ensure config.yaml exists
+        run: "[ -f config.yaml ] || cp config.example.yaml config.yaml"
+
+      - name: Run weekly report
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+        run: python -m src.main_weekly

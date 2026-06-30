@@ -29,3 +29,32 @@ youtube:
       channel_id: "UC5neeg2k9Hm3pC2y9jKlOjg"
       access_token_env: "YT_OTHERSTUFF_ACCESS_TOKEN"
       refresh_token_env: "YT_OTHERSTUFF_REFRESH_TOKEN"
+
+# Weekly Report (phase 1): rolls up the Daily Snapshots above into one row per week
+# (Sunday-Saturday). Reads notion.database_id, writes weekly_report.database_id. No
+# platform API calls. Summary is filled by a Notion AI property, not this pipeline.
+weekly_report:
+  database_id: "eeb18007c37548ca9a78eb0be8149a30"
+  total_views_column: "Total Views"
+  week_start_column: "Week Start"
+  week_end_column: "Week End"
+  generated_column: "Generated"
+  channels:
+    # views_method: "sum" (true per-day, e.g. YouTube) or "delta" (week-over-week, e.g. X).
+    # accounts lists every Daily Snapshots account label that maps to this channel (covers
+    # X handle renames, e.g. otherstuffpod -> OtherStuffShow).
+    - views_column: "Views: New Systems (X)"
+      followers_column: "Net Followers: New Systems (X)"
+      platform: "X"
+      accounts: ["newsystems_"]
+      views_method: "delta"
+    - views_column: "Views: Other Stuff (X)"
+      followers_column: "Net Followers: Other Stuff (X)"
+      platform: "X"
+      accounts: ["OtherStuffShow", "OtherStuffPod", "otherstuffpod"]
+      views_method: "delta"
+    - views_column: "Views: Other Stuff (YouTube)"
+      followers_column: "Net Subscribers: Other Stuff (YouTube)"
+      platform: "YouTube"
+      accounts: ["otherstuff"]
+      views_method: "sum"
